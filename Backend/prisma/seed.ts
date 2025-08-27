@@ -66,7 +66,7 @@ async function main() {
         create: [
           {
             orden_modulo: 1,
-            nombre_modulo: 'Introducción a la Gestión de Costos',
+            nombre_modulo: 'Costos Fijos',
             titulo_conteido: 'Conceptos Básicos',
             concepto: 'Aprende los fundamentos de la gestión de costos y su importancia en el éxito empresarial. Los costos son fundamentales para determinar la rentabilidad de un negocio y tomar decisiones estratégicas informadas.',
             recurso_interactivo: 'https://www.youtube.com/embed/dQw4w9WgXcQ'
