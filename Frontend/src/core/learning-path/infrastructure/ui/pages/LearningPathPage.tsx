@@ -1,7 +1,7 @@
 // Fichero: src/core/learning-path/ui/pages/LearningPathPage.tsx
 import React, { useEffect, useState } from 'react';
 import type { Module } from '../../../domain/entities/Module';
-import { LearningPathRepositoryMock } from '../../adapters/LearningPathRepositoryMock';
+import { LearningPathRepositoryApi } from '../../adapters/LearningPathRepositoryApi';
 import { GetLearningPath } from '../../../application/useCase/GetLearningPath';
 import { LearningPathGrid } from '../components/LearningPathGrid';
 import { StatusLegend } from '../components/StatusLegend';
@@ -29,16 +29,16 @@ export const LearningPathPage: React.FC = () => {
             return; // Detiene la ejecución si no hay ID
         }
 
-        const learningPathRepository = new LearningPathRepositoryMock();
+        const learningPathRepository = new LearningPathRepositoryApi();
         const getLearningPathUseCase = new GetLearningPath(learningPathRepository);
 
         const fetchModules = async () => {
             try {
                 setIsLoading(true);
-                // El caso de uso ya estaba preparado para recibir un ID.
-                // Convertimos el ID (que es un string) a número.
-                const idAsNumber = parseInt(businessId, 10);
-                const fetchedModules = await getLearningPathUseCase.execute(idAsNumber);
+                // Usar el businessId como el ID del negocio para obtener el progreso
+                const negocioId = parseInt(businessId, 10);
+                console.log(`🔍 [FRONTEND] Cargando módulos para negocio ID: ${negocioId}`);
+                const fetchedModules = await getLearningPathUseCase.execute(negocioId);
                 setModules(fetchedModules);
             } catch (err) {
                 console.error('Error al obtener el camino de aprendizaje:', err);

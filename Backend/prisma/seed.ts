@@ -68,36 +68,36 @@ async function main() {
             orden_modulo: 1,
             nombre_modulo: 'Introducción a la Gestión de Costos',
             titulo_conteido: 'Conceptos Básicos',
-            concepto: 'Aprende los fundamentos de la gestión de costos y su importancia en el éxito empresarial.',
-            recurso_interactivo: 'https://ejemplo.com/recurso1'
+            concepto: 'Aprende los fundamentos de la gestión de costos y su importancia en el éxito empresarial. Los costos son fundamentales para determinar la rentabilidad de un negocio y tomar decisiones estratégicas informadas.',
+            recurso_interactivo: 'https://www.youtube.com/embed/dQw4w9WgXcQ'
           },
           {
             orden_modulo: 2,
             nombre_modulo: 'Clasificación de Costos',
             titulo_conteido: 'Tipos de Costos',
-            concepto: 'Identifica y clasifica los diferentes tipos de costos en tu negocio.',
-            recurso_interactivo: 'https://ejemplo.com/recurso2'
+            concepto: 'Identifica y clasifica los diferentes tipos de costos en tu negocio. Los costos se pueden clasificar en fijos, variables, directos, indirectos, y cada tipo tiene implicaciones diferentes en la gestión empresarial.',
+            recurso_interactivo: 'https://www.youtube.com/embed/jNQXAC9IVRw'
           },
           {
             orden_modulo: 3,
             nombre_modulo: 'Análisis de Punto de Equilibrio',
             titulo_conteido: 'Punto de Equilibrio',
-            concepto: 'Calcula el punto de equilibrio y toma decisiones informadas sobre precios y volúmenes.',
-            recurso_interactivo: 'https://ejemplo.com/recurso3'
+            concepto: 'Calcula el punto de equilibrio y toma decisiones informadas sobre precios y volúmenes. El punto de equilibrio es el nivel de ventas donde los ingresos igualan los costos totales, sin generar ganancias ni pérdidas.',
+            recurso_interactivo: 'https://www.youtube.com/embed/9bZkp7q19f0'
           },
           {
             orden_modulo: 4,
             nombre_modulo: 'Presupuesto de Costos',
             titulo_conteido: 'Presupuestación',
-            concepto: 'Desarrolla presupuestos efectivos para controlar y planificar los costos.',
-            recurso_interactivo: 'https://ejemplo.com/recurso4'
+            concepto: 'Desarrolla presupuestos efectivos para controlar y planificar los costos. Un buen presupuesto te permite anticipar gastos, asignar recursos eficientemente y medir el rendimiento de tu negocio.',
+            recurso_interactivo: 'https://www.youtube.com/embed/kJQP7kiw5Fk'
           },
           {
             orden_modulo: 5,
             nombre_modulo: 'Control y Análisis de Desviaciones',
             titulo_conteido: 'Control de Costos',
-            concepto: 'Implementa sistemas de control y análisis de desviaciones para optimizar costos.',
-            recurso_interactivo: 'https://ejemplo.com/recurso5'
+            concepto: 'Implementa sistemas de control y análisis de desviaciones para optimizar costos. El control de costos te permite identificar ineficiencias, corregir desviaciones y mejorar la rentabilidad de tu negocio.',
+            recurso_interactivo: 'https://www.youtube.com/embed/ZZ5LpwO-An4'
           }
         ]
       }

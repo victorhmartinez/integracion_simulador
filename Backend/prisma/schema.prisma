@@ -41,9 +41,10 @@ model Modulos {
   titulo_conteido       String?                 @db.VarChar(255)
   concepto              String
   recurso_interactivo   String?                 @db.VarChar(255)
-  Aprendizaje           Aprendizaje             @relation(fields: [id_aprendizaje], references: [id_aprendizaje], onDelete: NoAction, onUpdate: NoAction, map: "fk_modulos_aprendizaje")
-  NegocioProgresoPaso   NegocioProgresoPaso[]
-  Registros_financieros Registros_financieros[]
+  Aprendizaje                    Aprendizaje             @relation(fields: [id_aprendizaje], references: [id_aprendizaje], onDelete: NoAction, onUpdate: NoAction, map: "fk_modulos_aprendizaje")
+  NegocioProgresoPaso            NegocioProgresoPaso[]
+  Registros_financieros          Registros_financieros[]
+  Resultados_Validacion_Costos   Resultados_Validacion_Costos[]
 }
 
 model NegocioProgresoPaso {
@@ -69,11 +70,12 @@ model Negocios {
   ubicacion             String
   id_tamano             Int                     @map("id_tamano")
   fecha_creacion        DateTime?               @default(now()) @db.Timestamp(6)   @map("fecha_creacion")
-  Analisis_IA           Analisis_IA[]
-  NegocioProgresoPaso   NegocioProgresoPaso[]
-  tamano_negocio        tamano_negocio          @relation(fields: [id_tamano], references: [id_tamano], onDelete: NoAction, onUpdate: NoAction, map: "fk_negocios_tamano")
-  Usuarios              Usuarios                @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_negocios_usuarios")
-  Registros_financieros Registros_financieros[]
+  Analisis_IA                    Analisis_IA[]
+  NegocioProgresoPaso            NegocioProgresoPaso[]
+  tamano_negocio                 tamano_negocio          @relation(fields: [id_tamano], references: [id_tamano], onDelete: NoAction, onUpdate: NoAction, map: "fk_negocios_tamano")
+  Usuarios                       Usuarios                @relation(fields: [usuario_id], references: [usuario_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_negocios_usuarios")
+  Registros_financieros          Registros_financieros[]
+  Resultados_Validacion_Costos   Resultados_Validacion_Costos[]
   @@map("Negocios")
 }
 
@@ -123,6 +125,20 @@ model Resultados_Riesgos_Detectados {
   causa_directa     String?
   impacto_potencial String?
   Analisis_IA       Analisis_IA @relation(fields: [analisis_id], references: [analisis_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_riesgos_analisis")
+}
+
+model Resultados_Validacion_Costos {
+  validacion_id              Int         @id @default(autoincrement())
+  negocio_id                 Int
+  modulo_id                  Int
+  fecha_validacion           DateTime?   @default(now()) @db.Timestamp(6)
+  costos_validados           Json?       // Array de costos validados
+  costos_faltantes           Json?       // Array de costos faltantes
+  resumen_validacion         Json?       // Resumen completo de validación
+  puntuacion_global          Int?        // Puntuación 1-10
+  puede_proseguir_analisis   Boolean     @default(false)
+  Negocios                   Negocios    @relation(fields: [negocio_id], references: [negocio_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_validacion_negocios")
+  Modulos                    Modulos     @relation(fields: [modulo_id], references: [id_modulo], onDelete: NoAction, onUpdate: NoAction, map: "fk_validacion_modulos")
 }
 
 model Usuarios {

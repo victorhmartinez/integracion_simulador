@@ -16,14 +16,26 @@ export class AiService {
     this.model = this.genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
   }
 
-  async analyzePrompt(prompt: string): Promise<string> {
+  async analyzePrompt(prompt: string, timeoutMs: number = 30000): Promise<string> {
     try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
+      console.log(`🤖 [AI-SERVICE] Iniciando análisis con timeout de ${timeoutMs}ms`);
+      
+      // Crear una promesa con timeout
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout: La IA tardó demasiado en responder')), timeoutMs);
+      });
+      
+      // Promesa para la llamada a la IA
+      const aiPromise = this.model.generateContent(prompt).then(result => result.response.text());
+      
+      // Competir entre timeout y respuesta de IA
+      const response = await Promise.race([aiPromise, timeoutPromise]) as string;
+      
+      console.log(`✅ [AI-SERVICE] Respuesta recibida en tiempo`);
+      return response;
     } catch (error) {
-      console.error('❌ Error al generar contenido:', error);
-      throw new InternalServerErrorException('Error interno al generar contenido con Gemini.');
+      console.error('❌ [AI-SERVICE] Error al generar contenido:', error);
+      throw new InternalServerErrorException(`Error interno al generar contenido: ${error.message}`);
     }
   }
 }

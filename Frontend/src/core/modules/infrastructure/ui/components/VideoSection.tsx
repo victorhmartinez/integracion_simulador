@@ -48,6 +48,7 @@ export function VideoSection({ moduleContent, onVideoComplete }: VideoSectionPro
                             <>
                                 <div className="text-2xl mb-2">⚠️</div>
                                 <p className="text-sm font-medium">Error al cargar el video</p>
+                                <p className="text-xs opacity-75 mb-2">El video no se puede mostrar en este formato</p>
                                 <button
                                     onClick={() => setVideoState('loading')}
                                     className="mt-2 px-3 py-1 bg-white/20 rounded text-xs hover:bg-white/30 transition-colors"
@@ -73,9 +74,18 @@ export function VideoSection({ moduleContent, onVideoComplete }: VideoSectionPro
                     frameBorder="0"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
-                    onLoad={() => setVideoState('loaded')}
-                    onError={() => setVideoState('error')}
-                    onPlay={handleVideoEnd}
+                    onLoad={() => {
+                        console.log('✅ [VIDEO] Iframe cargado exitosamente');
+                        setVideoState('loaded');
+                    }}
+                    onError={() => {
+                        console.error('❌ [VIDEO] Error al cargar el iframe');
+                        setVideoState('error');
+                    }}
+                    onPlay={() => {
+                        console.log('▶️ [VIDEO] Video iniciado');
+                        handleVideoEnd();
+                    }}
                 />
             </div>
 

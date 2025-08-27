@@ -1,12 +1,72 @@
 import { useState, useEffect } from "react";
 import { FaRobot, FaCheckCircle, FaExclamationTriangle } from "react-icons/fa";
 import type { ModuleContent } from "../../../domain/entities/ModuleContent";
-import type { FinancialRecord } from "../../../domain/entities/FinancialRecord";
+import type { FinancialRecord as DomainFinancialRecord } from "../../../domain/entities/FinancialRecord";
+import type { FinancialRecord } from "../../adapters/FinancialRecordRepositoryApi";
 import type {  ValidationResult } from "../../../domain/entities/ValidationResult";
 import { ValidationModal } from "./ValidationModal";
 import {  ValidationResultDisplay } from './ValidationResultDisplay';
 import { FinalAnalysisResultDisplay } from "./FinalAnalysisResultDisplay";
 import type { FinalAnalysisResult } from "../../../domain/entities/FinalAnalysisResult";
+import { useParams } from "react-router-dom";
+import { apiClient } from "../../../../../shared/infrastructure/http/api-client";
+import { AiAnalysisService, type BusinessInfo, type CostRecord } from "../../adapters/AiAnalysisService";
+import { ValidationResultRepositoryApi } from "../../adapters/ValidationResultRepositoryApi";
+import { ModuleRepositoryApi } from "../../adapters/ModuleRepositoryApi";
+import { FinancialRecordRepositoryApi } from "../../adapters/FinancialRecordRepositoryApi";
+
+// Interface para la respuesta del negocio desde el backend
+interface BusinessApiResponse {
+  negocioId: number;
+  usuarioId: number;
+  tipoNegocio: string;
+  nombreNegocio: string;
+  ubicacion: string;
+  idTamano: number;
+  tamano: string; // Nombre del tamaño del negocio
+  fechaCreacion: string;
+}
+
+// Hook personalizado para obtener información del negocio
+const useBusinessInfo = (businessId: string | undefined) => {
+  const [businessInfo, setBusinessInfo] = useState<{ tipoNegocio: string; ubicacion: string; tamano: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchBusinessInfo = async () => {
+      if (!businessId) {
+        setError("No se ha especificado un ID de negocio.");
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        console.log(`🏢 [FRONTEND] Obteniendo información del negocio ${businessId}...`);
+        const response = await apiClient.get<BusinessApiResponse>(`/negocios/${businessId}`);
+        
+        console.log(`✅ [FRONTEND] Información del negocio obtenida:`, response);
+        
+        setBusinessInfo({
+          tipoNegocio: response.tipoNegocio,
+          ubicacion: response.ubicacion,
+          tamano: response.tamano || "No especificado"
+        });
+      } catch (err) {
+        console.error('Error al obtener información del negocio:', err);
+        setError("No se pudo obtener la información del negocio.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchBusinessInfo();
+  }, [businessId]);
+
+  return { businessInfo, isLoading, error };
+};
 
 // ============================================================================
 // 1. Componente de UI "Tonto" para el Formulario de Registros Financieros
@@ -45,7 +105,7 @@ function FinancialRecordForm({
                   type="text"
                   placeholder="Nombre del costo (ej: Alquiler)"
                   value={record.name}
-                  onChange={(e) => onUpdateRecord(record.id, 'name', e.target.value)}
+                  onChange={(e) => onUpdateRecord(record.id || 0, 'name', e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-4 py-3 transition-all focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 focus:outline-none"
                 />
               </div>
@@ -54,14 +114,14 @@ function FinancialRecordForm({
                   type="number"
                   placeholder="Monto"
                   value={record.amount}
-                  onChange={(e) => onUpdateRecord(record.id, 'amount', e.target.value)}
+                  onChange={(e) => onUpdateRecord(record.id || 0, 'amount', e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-4 py-3 transition-all focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 focus:outline-none"
                 />
               </div>
               <div className="flex items-center pt-3">
                 <button
                   type="button"
-                  onClick={() => onRemoveRecord(record.id)}
+                  onClick={() => onRemoveRecord(record.id || 0)}
                   aria-label="Eliminar registro"
                   className="p-2 text-red-500 hover:text-red-600 transition-colors rounded-full hover:bg-red-50"
                 >
@@ -96,27 +156,84 @@ interface SimulationSectionProps {
 }
 
 export function SimulationSection({ moduleContent, onSimulationComplete }: SimulationSectionProps) {
+  // Obtener los parámetros de la URL
+  const { businessId, moduleId } = useParams<{ businessId: string; moduleId: string }>();
+  
+  // Obtener información del negocio usando el hook personalizado
+  const { businessInfo, isLoading: isLoadingBusiness, error: businessError } = useBusinessInfo(businessId);
+  
  // --- Estados del Formulario y UI ---
-  const [records, setRecords] = useState<FinancialRecord[]>(() => [createNewRecord()]);
+  const [records, setRecords] = useState<FinancialRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingRecords, setIsLoadingRecords] = useState(true);
+  const [isSavingRecords, setIsSavingRecords] = useState(false);
+  const [hasExistingRecords, setHasExistingRecords] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [finalAnalysisResult, setFinalAnalysisResult] = useState<FinalAnalysisResult | null>(null);
   const [simulationCompleted, setSimulationCompleted] = useState(false);
 
+  // Cargar registros guardados al montar el componente
   useEffect(() => {
-  if (simulationCompleted) {
-    ValidationGeneral();
-  }
-}, [simulationCompleted]);
+    const loadSavedRecords = async () => {
+      if (!businessId || !moduleId) {
+        console.log('⚠️ [FRONTEND] No se pueden cargar registros: faltan businessId o moduleId');
+        setIsLoadingRecords(false);
+        return;
+      }
+
+      try {
+        console.log(`🔄 [FRONTEND] Verificando registros existentes para negocio ${businessId} y módulo ${moduleId}...`);
+        setIsLoadingRecords(true);
+        
+        const moduleRepository = new ModuleRepositoryApi();
+        const savedRecords = await moduleRepository.getAllFinancialRecords(
+          parseInt(businessId || '0'), 
+          parseInt(moduleId || '0')
+        );
+        
+        console.log(`📥 [FRONTEND] Registros encontrados en BD:`, savedRecords);
+        
+        if (savedRecords && savedRecords.length > 0) {
+          // ✅ EXISTEN REGISTROS: Se cargan automáticamente
+          console.log(`✅ [FRONTEND] Se encontraron ${savedRecords.length} registros guardados - CARGANDO AUTOMÁTICAMENTE`);
+          setRecords(savedRecords);
+          setHasExistingRecords(true);
+        } else {
+          // ❌ NO EXISTEN REGISTROS: El usuario debe agregar costos manualmente
+          console.log(`ℹ️ [FRONTEND] NO se encontraron registros guardados - EL USUARIO DEBE AGREGAR COSTOS MANUALMENTE`);
+          setRecords([createNewRecord()]);
+          setHasExistingRecords(false);
+        }
+      } catch (error) {
+        console.error('❌ [FRONTEND] Error al verificar registros guardados:', error);
+        console.log(`ℹ️ [FRONTEND] Error en verificación - EL USUARIO DEBE AGREGAR COSTOS MANUALMENTE`);
+        setRecords([createNewRecord()]);
+        setHasExistingRecords(false);
+      } finally {
+        setIsLoadingRecords(false);
+      }
+    };
+
+    loadSavedRecords();
+  }, [businessId, moduleId]);
+
+  // Notificar que la simulación está completa cuando se guarden los registros
+  useEffect(() => {
+    if (simulationCompleted && !isLoading && !error) {
+      // Notificar al componente padre que la simulación está completa
+      onSimulationComplete?.();
+    }
+  }, [simulationCompleted, isLoading, error, onSimulationComplete]);
+
   // --- Lógica del Formulario ---
   function createNewRecord(): FinancialRecord {
     return {
       id: Date.now() + Math.random(),
       name: "",
       amount: "",
-      businessId: 1, // Debes obtener este ID dinámicamente
+      businessId: businessId ? parseInt(businessId) : 1,
       moduleId: moduleContent.id,
       createdAt: new Date().toISOString(),
     };
@@ -124,147 +241,143 @@ export function SimulationSection({ moduleContent, onSimulationComplete }: Simul
 
   const total = records.reduce((sum, record) => sum + (parseFloat(record.amount) || 0), 0);
 
-  const addRecord = () => setRecords(prev => [...prev, createNewRecord()]);
-  const removeRecord = (id: number) => setRecords(prev => prev.length > 1 ? prev.filter(r => r.id !== id) : prev);
+  // Función para guardar registros cuando la validación sea correcta
+  const saveRecordsOnValidationSuccess = async (recordsToSave: FinancialRecord[]) => {
+    if (!businessId || !moduleId) return;
+
+    try {
+      setIsSavingRecords(true);
+      console.log('💾 [FRONTEND] Guardando registros después de validación exitosa...');
+      
+      // Filtrar registros que tienen datos
+      const validRecords = recordsToSave.filter(r => r.name.trim() && r.amount.trim());
+      
+      if (validRecords.length > 0) {
+        const savedRecords = await FinancialRecordRepositoryApi.saveRecords(validRecords);
+        console.log('✅ [FRONTEND] Registros guardados después de validación:', savedRecords.length);
+        
+        // Los registros se guardan como nuevos, no necesitamos actualizar IDs
+        console.log('✅ [FRONTEND] Registros financieros guardados exitosamente en la BD');
+      }
+    } catch (error) {
+      console.error('❌ [FRONTEND] Error al guardar registros después de validación:', error);
+    } finally {
+      setIsSavingRecords(false);
+    }
+  };
+
+  const addRecord = () => {
+    const newRecords = [...records, createNewRecord()];
+    setRecords(newRecords);
+    // No guardar automáticamente - solo cuando la validación sea exitosa
+  };
+
+  const removeRecord = async (id: number) => {
+    const newRecords = records.length > 1 ? records.filter(r => r.id !== id) : records;
+    setRecords(newRecords);
+    
+    // Si el registro tenía ID, eliminarlo de la BD
+    if (id && id > 0) {
+      try {
+        await FinancialRecordRepositoryApi.deleteRecord(id);
+        console.log('✅ [FRONTEND] Registro eliminado de la BD:', id);
+      } catch (error) {
+        console.error('❌ [FRONTEND] Error al eliminar registro de la BD:', error);
+      }
+    }
+    
+    // No guardar automáticamente - solo cuando la validación sea exitosa
+  };
+
   const updateRecord = (id: number, field: 'name' | 'amount', value: string) => {
-    setRecords(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+    const newRecords = records.map(r => r.id === id ? { ...r, [field]: value } : r);
+    setRecords(newRecords);
+    
+    // No guardar automáticamente - solo cuando la validación sea exitosa
   };
   
-  // --- Lógica del Flujo de Análisis (API y Modal) ---
-  // --- Lógica de la API (Ahora para Validación) ---
+    // --- Lógica del Flujo de Análisis Optimizado ---
+  const aiAnalysisService = new AiAnalysisService();
+
   const executeValidation = async () => {
+    // Verificar que tengamos la información del negocio
+    if (!businessInfo) {
+      setError("No se pudo obtener la información del negocio. Por favor, recarga la página.");
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     setValidationResult(null);
 
-    const listaCostos = records
-      .map(r => r.name && r.amount ? `${r.name.trim()}: $${r.amount}` : null)
-      .filter(Boolean)
-      .join('\n');
-
-    // TODO: Obtener la ubicación dinámicamente si es necesario
-    const ubicacion = "Quito, La Carolina";
-    const tipoNegocio="Cafeteria"
-    
-    // El prompt completo para la IA
- const prompt = `Rol: Actúa como un auditor de datos financieros y analista de riesgos. Tu especialización es asegurar la calidad y precisión de la información financiera de entrada para emprendimientos en Quito, Ecuador, antes de que sea utilizada en un análisis estratégico.
-
-Contexto: Soy un emprendedor con un negocio pequeño de tipo ${tipoNegocio} ubicado en ${ubicacion} y necesito tu ayuda para depurar mi lista de costos mensuales antes de que tu colega, el asesor financiero de élite, realice el diagnóstico completo. Un análisis profundo basado en datos incorrectos, agrupados o mal categorizados sería inútil y me llevaría a tomar decisiones erróneas. Tu misión es auditar mi lista y darme el visto bueno para proceder, o indicarme exactamente qué debo corregir.
-
-Reglas de Validación:
-1.  **Exclusividad de Costos Fijos:** La lista solo debe contener costos fijos, es decir, aquellos que no varían significativamente con el volumen de ventas mes a mes. Costos como 'materia prima', 'compra de inventario', 'insumos' o 'packaging' son costos variables y deben ser marcados como inválidos.
-2.  **Costos Desagregados:** Cada ítem debe representar un único costo. No se aceptan costos agrupados como 'Servicios básicos e internet' o 'Marketing y permisos'. Deben ser listados por separado para un análisis preciso.
-3.  **Especificidad:** No se aceptan costos ambiguos o genéricos como 'Varios', 'Otros gastos' o 'Gastos administrativos'. Cada costo debe ser claramente identificable.
-4. **Exclusión Explícita de Costos obligatorios:** Cualquier costo relacionado con compensación humana debe ser omitido, descartado y/o no incluido obligatorios en los para este análisis específico. Esto incluye pero no se limita a:
-
-Sueldos y salarios: Pagos fijos mensuales a empleados
-Honorarios profesionales: Pagos a consultores, asesores o profesionales independientes
-Nómina: Cualquier concepto incluido en la planilla de pagos
-Beneficios sociales: Décimo tercero, décimo cuarto, vacaciones, utilidades
-Aportes patronales: IESS, fondos de reserva, contribuciones obligatorias
-Bonificaciones: Incentivos, comisiones fijas, bonos de productividad
-Contratistas de servicios personales: Pagos a personas naturales por servicios específicos
-Capacitación de personal: Cursos, entrenamientos, desarrollo profesional
-Uniformes y equipos de trabajo: Vestimenta, herramientas personales, EPP
-
-**NO DEBES INCLUIR EN LOS COSTOS OBLIGATORIOS Cualquier costo relacionado con 'sueldos', 'honorarios', 'salarios' o 'nómina' INCLUSO SI SON ESCENCIALES**
-**NO DEBES INCLUIR EN LOS COSTOS OBLIGATORIOS Cualquier costo relacionado con 'contabilidad' INCLUSO SI SON ESCENCIALES**
-
-Justificación: Este análisis se enfoca exclusivamente en costos operativos mensuales no relacionados con personal para proporcionar una base de costos fijos que permita evaluar la viabilidad operativa independiente de las decisiones de contratación. Los costos de personal serán analizados en una fase posterior del proceso de planificación financiera.
-
-5.  **Verificación de Costos obligatorios faltantes:** Basado en el ${tipoNegocio} proporcionado, debes inferir los costos fijos críticos (Requeridos por ley o que causan cierre del negocio si faltan) que fueron omitidos y mencionarlos en el resumen (en caso de haber alguno). En caso de existir costos obligatorios faltantes no se podrá proseguir con el analisis por lo que debes ser muy cauteloso al agregar alguno, recuerda que es un negocio pequeño y a lo mejor no es imperativo tener en cuenta estos costos, NO ESTAS OBLIGADO A INCLUIR COSTOS OBLIGATORIOS, SI CONSIDERAS QUE SE A PROPORCIONADO UNA LISTA ACEPTABLE DE COSTOS FIJOS DEJA LA SECCION DE COSTOS OBLIGATORIOS VACIA Y CENTRATE EN VALIDAR SUS VALORES. en tal caso puedes ponerlos en la seccion de recomendados, que no impiden que se prosiga con el analisis.
-6.  **Verificación de Costos recomendados faltantes:** Basado en el ${tipoNegocio} proporcionado, debes inferir los costos fijos no tan importantes (Mejoran eficiencia/rentabilidad pero no son críticos) que fueron omitidos y mencionarlos en el resumen (en caso de haber alguno). Estos costos son meramente informativos para el conocimiento del emprendedor por lo tanto no impiden que se prosiga con el analisis en caso de no ser incluidos.
-7.  **Verificación de costos realistas:** Parte crucial de tu trabajo es identificar los valores ilógicos o fuera del rango aceptable para la ubicacion mencionada. Para conseguir esto debes Comparar con rangos de mercado típicos para la ubicación, Considerar el tamaño/escala del negocio, Verificar coherencia entre costos relacionados. En caso de no cumplir con esta regla el costo debe ser marcado com invalido.
-
-Información a Validar:
-Tipo de Negocio: ${tipoNegocio}
-Ubicacion: ${ubicacion}
-Lista de Costos Proporcionada:
-${listaCostos}
-
-Tarea:
-Analiza cada costo en la lista proporcionada según las reglas de validación. Luego, determina si faltan costos obligatorios para el tipo de negocio. Evita incluir costos redundantes aparentemente obligatorios y adhierete firmemente a las reglas de validacion, en caso de que la lista de costos provista sea suficientemente robusta puedes no incluir la seccion de costos_obligatorios_faltantes. Finalmente, genera un veredicto que indique si puedo proceder con el análisis principal. Tu respuesta debe ser únicamente un objeto JSON que siga estrictamente la siguiente estructura. No incluyas ningún texto introductorio o explicaciones fuera del formato JSON.
-
-
-Formato de Respuesta:
-
-{
-  "validacion_de_costos": [
-    {
-      "costo_recibido": "Costo1",
-      "valor_recibido": "$Valor1",
-      "es_valido": true,
-      "justificacion": "Válido. Es un costo fijo, específico y fundamental para el análisis."
-    },
-    {
-      "costo_recibido": "Costo2",
-      "valor_recibido": "$Valor2",
-      "es_valido": false,
-      "justificacion": "Inválido. Este costo es variable, no fijo. Su valor depende directamente de las ventas y la producción."
-    },
-    {
-      "costo_recibido": "Costo3",
-      "valor_recibido": "$Valor3",
-      "es_valido": false,
-      "justificacion": "Inválido. El término es ambiguo y agrupa múltiples costos. Se debe desglosar en ítems específicos."
-    },
-    {
-      "costo_recibido": "Costo4",
-      "valor_recibido": "$Valor4",
-      "es_valido": false,
-      "justificacion": "Inválido. Según las instrucciones, este tipo de costo debe ser excluido del análisis."
-    }
-  ],
-  "costos_obligatorios_faltantes": [
-    {
-      "nombre": "Costo Obligatorio 1",
-      "descripcion": "Descripción del costo obligatorio que debe incluirse por ley o necesidad operativa.",
-      "motivo_critico": "Razón por la cual este costo es crítico y obligatorio para el funcionamiento del negocio."
-    },
-    {
-      "nombre": "Costo Obligatorio 2",
-      "descripcion": "Descripción del segundo costo obligatorio necesario para la operación.",
-      "motivo_critico": "Explicación de por qué es indispensable incluir este costo en el análisis."
-    }
-  ],
-  "costos_recomendados_faltantes": [
-    {
-      "nombre": "Costo Recomendado 1",
-      "descripcion": "Descripción del costo recomendado que mejora la operación del negocio.",
-      "beneficio": "Beneficio específico que aporta este costo al crecimiento y eficiencia del negocio."
-    },
-    {
-      "nombre": "Costo Recomendado 2",
-      "descripcion": "Descripción del segundo costo recomendado para optimizar operaciones.",
-      "beneficio": "Ventaja competitiva o mejora operativa que proporciona este costo al negocio."
-    }
-  ],
-  "resumen_validacion": {
-    "mensaje_general": "Se han detectado errores en la lista proporcionada. Por favor, corrígela siguiendo las justificaciones para cada ítem inválido. Adicionalmente, para este tipo de negocio, es crítico que no olvides incluir los costos obligatorios y recomendados listados. Estos son vitales para la protección y el crecimiento sostenible del negocio.",
-    "puede_proseguir_analisis": false
-  }
-}
-
-Nota: ste formato tiene funciones exclusivamente informativas para el correcto formato de la respuesta. Por ningún motivo debe ser la respuesta recibida. Los textos genéricos deben ser reemplazados con contenido específico.
-
-  `;
-
-      try {
-      const res = await fetch("https://backend-costos.onrender.com/analizar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
-      });
-
-      if (!res.ok) throw new Error(`Error del servidor: ${res.status}`);
+    try {
+      console.log('🚀 [FRONTEND] Iniciando flujo optimizado de análisis...');
       
-      const data = await res.json();
-      const content = data.respuesta as string;
-      const parsedContent: ValidationResult = JSON.parse(content.match(/```(?:json)?([\s\S]*?)```/)?.[1] || content);
+      // Convertir records a formato esperado por el servicio
+      const costs: CostRecord[] = records
+        .filter(r => r.name && r.amount)
+        .map(r => ({
+          name: r.name.trim(),
+          amount: String(r.amount)
+        }));
+
+      const businessInfoForAnalysis: BusinessInfo = {
+        tipoNegocio: businessInfo.tipoNegocio,
+        tamano: businessInfo.tamano,
+        ubicacion: businessInfo.ubicacion
+      };
+
+      console.log('📊 [FRONTEND] Costos a enviar:', costs);
+      console.log('🏢 [FRONTEND] Información del negocio a enviar:', businessInfoForAnalysis);
+      console.log(`🏢 [FRONTEND] Usando información del negocio: ${businessInfo.tipoNegocio} (${businessInfo.tamano}) en ${businessInfo.ubicacion}`);
+
+      // Usar el nuevo servicio optimizado
+      const result = await aiAnalysisService.completeAnalysis(costs, businessInfoForAnalysis);
       
-      setValidationResult(parsedContent);
+      if (result.success && 'validation' in result) {
+        console.log('✅ [FRONTEND] Análisis completado exitosamente:', result);
+        
+        // Usar el resultado de validación para el modal
+        if (result.validation?.data) {
+          setValidationResult(result.validation.data);
+          
+          // Guardar el resultado de validación en la base de datos
+          try {
+            if (businessId && moduleId) {
+              console.log('💾 [FRONTEND] Guardando resultado de validación en BD...');
+              
+              const validationData = {
+                negocioId: parseInt(businessId),
+                moduloId: parseInt(moduleId),
+                costosValidados: result.validation.data.validacion_de_costos || [],
+                costosFaltantes: result.validation.data.costos_obligatorios_faltantes || [],
+                resumenValidacion: result.validation.data.resumen_validacion || {},
+                puntuacionGlobal: parseInt(result.validation.data.resumen_validacion?.puntuacion_global) || 0,
+                puedeProseguirAnalisis: result.validation.data.resumen_validacion?.puede_proseguir_analisis || false
+              };
+              
+              await ValidationResultRepositoryApi.saveValidationResult(validationData);
+              console.log('✅ [FRONTEND] Resultado de validación guardado exitosamente');
+              
+              // Los registros financieros se guardarán cuando se presione "Continuar al Análisis"
+            }
+          } catch (saveError) {
+            console.error('❌ [FRONTEND] Error al guardar resultado de validación:', saveError);
+            // No bloqueamos el flujo si falla el guardado
+          }
+        }
+        
+        // Guardar el resultado completo para el análisis final
+        setFinalAnalysisResult(result as any);
+      } else {
+        console.log('❌ [FRONTEND] Análisis falló:', result);
+        setError((result as any).error || "Error en el análisis");
+      }
+      
     } catch (err: any) {
-      setError(err.message || "Ocurrió un error al procesar la validación.");
+      console.error('💥 [FRONTEND] Error en análisis optimizado:', err);
+      setError(err.message || "Ocurrió un error al procesar el análisis.");
     } finally {
       setIsLoading(false);
     }
@@ -276,111 +389,23 @@ Nota: ste formato tiene funciones exclusivamente informativas para el correcto f
     executeValidation();
   };
   
-  const handleProceedToAnalysis = () => {
-    // Aquí es donde llamarías al SIGUIENTE paso (el análisis con el prompt anterior)
-    // Por ahora, simplemente cerramos el modal y completamos la simulación.
-    console.log("Procediendo al análisis principal con datos validados...");
-    setIsModalOpen(false);
-    onSimulationComplete(records, total);
-     setSimulationCompleted(true); // Descomentar si tienes una pantalla de éxito
-  };
-  const ValidationGeneral = async () => {
-    setIsLoading(true);
-    setError(null);
-    setValidationResult(null);
-
-    const listaCostos = records
-      .map(r => r.name && r.amount ? `${r.name.trim()}: $${r.amount}` : null)
-      .filter(Boolean)
-      .join('\n');
-
-    // TODO: Obtener la ubicación dinámicamente si es necesario
-    const ubicacion = "Quito, La Carolina";
-    const tipoNegocio="Cafeteria"
+  const handleProceedToAnalysis = async () => {
+    // Guardar los registros financieros cuando se presione "Continuar al Análisis"
+    try {
+      console.log("💾 [FRONTEND] Guardando registros financieros antes de continuar al análisis...");
+      await saveRecordsOnValidationSuccess(records);
+      console.log("✅ [FRONTEND] Registros financieros guardados exitosamente");
+    } catch (error) {
+      console.error("❌ [FRONTEND] Error al guardar registros financieros:", error);
+      // Continuar con el flujo aunque falle el guardado
+    }
     
-    // El prompt completo para la IA
-    const prompt = `Rol: Actúa como un asesor financiero de élite y analista de riesgos, especializado en la rentabilidad y optimización de costos para ${tipoNegocio} en Quito, Ecuador. Tu análisis debe ser preciso, práctico y basado en datos del mercado local.
-Contexto: Soy un emprendedor con un ${tipoNegocio} en Quito y necesito un diagnóstico financiero experto. Te proporcionaré la ubicación exacta y mi lista de costos fijos mensuales. Tu misión es auditar estos números, identificar puntos ciegos en mi presupuesto y alertarme sobre los riesgos operativos y financieros que estoy corriendo.
-No tomes los salarios como un costo fijos. Vamos ignorar todo lo que tenga que ver con salarios
-Información del Negocio:
-Ubicación (Zona/Barrio en Quito):${ubicacion}
-Costos Fijos Mensuales Identificados:
-${listaCostos}
-Tarea:
-Basado en los costos y la ubicación proporcionada, realiza el siguiente diagnóstico en cuatro pasos:
-Análisis Comparativo de Costos: Evalúa cada costo que te proporcioné. Compáralo con los rangos de mercado específicos para la zona de Quito indicada. Para el campo evaluacion, tu respuesta debe ser estrictamente "Dentro del rango" o "Fuera del rango". Toda la justificación, el análisis cualitativo y el porqué de la evaluación deben ir exclusivamente en el campo comentario_evaluacion.
-Identificación de Costos Fijos Omitidos: Determina qué costos fijos críticos no están en la lista. Para cada uno, describe su importancia estratégica para la sostenibilidad del negocio.
-Análisis de Riesgos por Omisión: Con base en los costos que faltan, detalla los riesgos específicos que la cafetería está corriendo. Para cada riesgo, indica su causa directa (el costo omitido) y el impacto potencial en la operación o finanzas del negocio.
-Plan de Acción y Recomendaciones: Proporciona tres recomendaciones accionables y priorizadas. Cada recomendación debe ser una acción clara para mitigar un riesgo detectado o para optimizar un costo que evaluaste como "Fuera del rango".
-Formato de Respuesta:
-Tu respuesta debe ser únicamente un objeto JSON que siga estrictamente la siguiente estructura. No incluyas ningún texto introductorio, explicaciones o conclusiones fuera del formato JSON.
-
-[
-  "analisis_costos_recibidos": [
-    "alquiler": {
-      "valor_recibido": "$800",
-      "rango_estimado_zona_especifica": "$900 - $1800 (para La Carolina)",
-      "evaluacion": "Fuera del rango",
-      "comentario_evaluacion": "El valor está por debajo del rango de mercado para La Carolina. Esto representa una ventaja competitiva significativa, pero es crucial asegurar que el contrato de arrendamiento sea estable a largo plazo."
-    },
-    "sueldos_personal": {
-      "valor_recibido": "$1100",
-      "rango_estimado_zona_especifica": "$1100 - $1800 (para 2 empleados)",
-      "evaluacion": "Dentro del rango",
-      "comentario_evaluacion": "El valor se encuentra en el límite inferior del rango para dos empleados, cumpliendo con los requisitos legales básicos. La eficiencia y la retención del personal son factores clave a monitorear con este presupuesto."
-    },
-    "servicios_basicos": {
-      "valor_recibido": "$700",
-      "rango_estimado_zona_especifica": "$250 - $500",
-      "evaluacion": "Fuera del rango",
-      "comentario_evaluacion": "El costo excede significativamente el límite superior del rango esperado. Esto es una señal de alerta máxima que apunta a una fuga de capital, probablemente por equipos muy ineficientes, una fuga de agua no detectada o una tarifa eléctrica incorrecta."
-    }
-    "internet": {
-      "valor_recibido": "$50",
-      "rango_estimado_zona_especifica": "$30 - $60",
-      "evaluacion": "Dentro del rango",
-      "comentario_evaluacion": "El costo está dentro del rango esperado para un plan básico de internet, lo cual es adecuado para las operaciones diarias."
-    }
-  ],
-  "plan_de_accion_recomendado": [
-    {
-      "titulo": "Auditoría de Emergencia de Servicios Básicos",
-      "descripcion": "Acción Inmediata: Realizar una revisión exhaustiva del consumo de electricidad y agua ya que su costo está 'Fuera del rango'. Contactar a la Empresa Eléctrica para verificar tarifas y al proveedor de internet para optimizar el plan. Es prioritario encontrar la causa del alto gasto para detener la fuga de dinero.",
-      "prioridad": "Crítica"
-    },
-    {
-      "titulo": "Implementar un Sistema de Control y Prevención",
-      "descripcion": "Contratar un software de punto de venta (POS) para mitigar el riesgo de descontrol financiero. Asignar un 1.5% de las ventas a un fondo para mantenimiento preventivo y así reducir el riesgo de parada operativa.",
-      "prioridad": "Alta"
-    },
-    {
-      "titulo": "Aprovechar la Ventaja Competitiva del Alquiler",
-      "descripcion": "Dado que el alquiler está 'Fuera del rango' (a su favor), intente negociar una extensión del contrato a largo plazo para asegurar esta ventaja. El ahorro mensual obtenido aquí puede ser redirigido para cubrir los costos omitidos, como el marketing o el seguro del negocio.",
-      "prioridad": "Media"
-    }
-  ]
-    ]`;
-
-      try {
-      const res = await fetch("https://backend-costos.onrender.com/analizar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
-      });
-
-      if (!res.ok) throw new Error(`Error del servidor: ${res.status}`);
-      
-      const data = await res.json();
-      const content = data.respuesta as string;
-      const parsedContent: FinalAnalysisResult = JSON.parse(content.match(/```(?:json)?([\s\S]*?)```/)?.[1] || content);
-      
-      setFinalAnalysisResult(parsedContent);
-    } catch (err: any) {
-      setError(err.message || "Ocurrió un error al procesar la validación.");
-    } finally {
-      setIsLoading(false);
-    }
+    // Cerrar modal y proceder a la vista de resultados
+    console.log("Procediendo a la vista de resultados...");
+    setIsModalOpen(false);
+    setSimulationCompleted(true);
   };
+
   const handleCloseAndCorrect = () => {
     setIsModalOpen(false);
   };
@@ -388,21 +413,23 @@ Tu respuesta debe ser únicamente un objeto JSON que siga estrictamente la sigui
   if (simulationCompleted) {
     return (
       <div className="text-center p-8 bg-green-100 rounded-brand border border-green-300">
-        {isLoading ? (
-        <>
-          <span className="text-6xl animate-pulse">⏳</span>
-          <p className="mt-4 text-xl text-neutral-700">Procesando el análisis, por favor espera...</p>
-        </>
-      ) : finalAnalysisResult ? (
-        <>
-          <FaCheckCircle className="text-5xl text-green-600 mx-auto mb-4" />
-          <h3 className="text-2xl font-bold text-green-800">¡Proceso Completado!</h3>
-          <p className="text-neutral-600 mt-2">Tus datos han sido validados y el análisis ha finalizado.</p>
-          <FinalAnalysisResultDisplay data={finalAnalysisResult} />
-        </>
-      ) : (
-        <p className="text-red-500">Ocurrió un error al obtener los resultados.</p>
-      )}
+        <FaCheckCircle className="text-5xl text-green-600 mx-auto mb-4" />
+        <h3 className="text-2xl font-bold text-green-800">¡Simulación Completada!</h3>
+        <p className="text-neutral-600 mt-2 mb-6">Tus registros financieros han sido guardados exitosamente.</p>
+        
+        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 mb-6">
+          <h4 className="font-bold text-blue-800 mb-2">📊 Próximos Pasos</h4>
+          <p className="text-blue-700 text-sm">
+            Ve a la pestaña "Resultados" para ver el análisis completo de tus costos financieros.
+          </p>
+        </div>
+        
+        <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+          <h4 className="font-bold text-yellow-800 mb-2">💡 Información</h4>
+          <p className="text-yellow-700 text-sm">
+            Se analizaron {records.filter(r => r.name && r.amount).length} costos financieros.
+          </p>
+        </div>
       </div>
     );
   }
@@ -415,6 +442,38 @@ Tu respuesta debe ser únicamente un objeto JSON que siga estrictamente la sigui
       </h3>
 
       <div className="bg-secondary-50 rounded-brand p-8 mb-6">
+        {/* Indicador de carga de información del negocio */}
+        {isLoadingBusiness && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center gap-2 text-blue-700">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+              <span className="text-sm">Cargando información del negocio...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Indicador de carga de registros guardados */}
+        {isLoadingRecords && (
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-center gap-2 text-yellow-700">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600"></div>
+              <span className="text-sm">Cargando registros guardados...</span>
+            </div>
+          </div>
+        )}
+
+
+        
+                 {/* Mostrar información del negocio cuando esté disponible */}
+         {businessInfo && (
+           <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+             <div className="flex items-center gap-2 text-green-700">
+               <span className="text-sm font-medium">Negocio:</span>
+               <span className="text-sm">{businessInfo.tipoNegocio} ({businessInfo.tamano}) en {businessInfo.ubicacion}</span>
+             </div>
+           </div>
+         )}
+        
         <FinancialRecordForm
           records={records}
           total={total}
@@ -425,10 +484,20 @@ Tu respuesta debe ser únicamente un objeto JSON que siga estrictamente la sigui
         <div className="border-t border-neutral-200 mt-6 text-right">
           <button
             onClick={handleExecuteValidation}
-            className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-brand shadow-lg"
+            disabled={isLoadingBusiness || !businessInfo || isLoadingRecords}
+            className={`font-bold py-3 px-6 rounded-brand shadow-lg transition-colors ${
+              isLoadingBusiness || !businessInfo || isLoadingRecords
+                ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                : 'bg-green-600 hover:bg-green-700 text-white'
+            }`}
           >
-            Ejecutar Analisis
+            {isLoadingBusiness || isLoadingRecords ? 'Cargando...' : 'Ejecutar Análisis'}
           </button>
+          {businessError && (
+            <p className="text-red-500 text-sm mt-2 text-right">
+              Error al cargar información del negocio
+            </p>
+          )}
         </div>
       </div>
 

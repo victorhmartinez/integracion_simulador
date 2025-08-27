@@ -5,6 +5,7 @@ export class Business {
   nombreNegocio: string;
   ubicacion: string;
   idTamano: number;
+  tamano?: string; // Nombre del tamaño del negocio
   fechaCreacion?: Date;
 
   constructor(
@@ -15,6 +16,7 @@ export class Business {
     idTamano: number,
     negocioId?: number,
     fechaCreacion?: Date,
+    tamano?: string,
   ) {
     this.usuarioId = usuarioId;
     this.tipoNegocio = tipoNegocio;
@@ -23,5 +25,6 @@ export class Business {
     this.idTamano = idTamano;
     this.negocioId = negocioId;
     this.fechaCreacion = fechaCreacion;
+    this.tamano = tamano;
   }
 }

@@ -37,6 +37,18 @@ export class FinancialRecordController {
     return this.recordService.findByBusinessId(businessId);
   }
 
+  @Get('business/:businessId/module/:moduleId')
+  @ApiOperation({ summary: 'Get all financial records for a specific business and module' })
+  @ApiParam({ name: 'businessId', description: 'The ID of the business' })
+  @ApiParam({ name: 'moduleId', description: 'The ID of the module' })
+  findByBusinessAndModule(
+    @Param('businessId', ParseIntPipe) businessId: number,
+    @Param('moduleId', ParseIntPipe) moduleId: number
+  ) {
+    console.log(`📥 [SIMULATOR-FINANCIAL-CONTROLLER] Solicitando registros para negocio ${businessId} y módulo ${moduleId}`);
+    return this.recordService.findByBusinessAndModule(businessId, moduleId);
+  }
+
   @Put(':id')
   @ApiOperation({ summary: 'Update a financial record by its ID' })
   @ApiParam({ name: 'id', description: 'The ID of the record to update' })

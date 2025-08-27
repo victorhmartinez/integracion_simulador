@@ -63,6 +63,9 @@ export class BusinessService {
     
     const businessPrisma = await this.prisma.negocios.findUnique({
       where: { negocio_id: id },
+      include: {
+        tamano_negocio: true, // Incluir la información del tamaño
+      },
     });
 
     if (!businessPrisma) {

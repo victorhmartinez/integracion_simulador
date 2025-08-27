@@ -47,6 +47,23 @@ export class FinancialRecordService {
     return recordsPrisma.map(this.mapper.toDomain);
   }
 
+  async findByBusinessAndModule(businessId: number, moduleId: number): Promise<FinancialRecord[]> {
+    console.log(`🔍 [SIMULATOR-FINANCIAL-SERVICE] Buscando registros para negocio ${businessId} y módulo ${moduleId}`);
+    
+    const recordsPrisma = await this.prisma.registros_financieros.findMany({
+      where: { 
+        negocio_id: businessId,
+        modulo_id: moduleId 
+      },
+      orderBy: {
+        fecha_registro: 'asc'
+      }
+    });
+    
+    console.log(`✅ [SIMULATOR-FINANCIAL-SERVICE] Encontrados ${recordsPrisma.length} registros`);
+    return recordsPrisma.map(this.mapper.toDomain);
+  }
+
   async update(id: number, updateDto: UpdateFinancialRecordDto): Promise<FinancialRecord> {
     await this.findById(id); // Verifica que el registro exista
 
