@@ -1,13 +1,10 @@
 import { useState, useEffect } from "react";
 import { FaRobot, FaCheckCircle, FaExclamationTriangle } from "react-icons/fa";
 import type { ModuleContent } from "../../../domain/entities/ModuleContent";
-import type { FinancialRecord as DomainFinancialRecord } from "../../../domain/entities/FinancialRecord";
 import type { FinancialRecord } from "../../adapters/FinancialRecordRepositoryApi";
 import type {  ValidationResult } from "../../../domain/entities/ValidationResult";
 import { ValidationModal } from "./ValidationModal";
 import {  ValidationResultDisplay } from './ValidationResultDisplay';
-import { FinalAnalysisResultDisplay } from "./FinalAnalysisResultDisplay";
-import type { FinalAnalysisResult } from "../../../domain/entities/FinalAnalysisResult";
 import { useParams } from "react-router-dom";
 import { apiClient } from "../../../../../shared/infrastructure/http/api-client";
 import { AiAnalysisService, type BusinessInfo, type CostRecord } from "../../adapters/AiAnalysisService";
@@ -166,12 +163,10 @@ export function SimulationSection({ moduleContent, onSimulationComplete }: Simul
   const [records, setRecords] = useState<FinancialRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingRecords, setIsLoadingRecords] = useState(true);
-  const [isSavingRecords, setIsSavingRecords] = useState(false);
-  const [hasExistingRecords, setHasExistingRecords] = useState(false);
+  // const [isSavingRecords, setIsSavingRecords] = useState(false); // Variable no utilizada
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
-  const [finalAnalysisResult, setFinalAnalysisResult] = useState<FinalAnalysisResult | null>(null);
   const [simulationCompleted, setSimulationCompleted] = useState(false);
 
   // Cargar registros guardados al montar el componente
@@ -199,18 +194,15 @@ export function SimulationSection({ moduleContent, onSimulationComplete }: Simul
           // ✅ EXISTEN REGISTROS: Se cargan automáticamente
           console.log(`✅ [FRONTEND] Se encontraron ${savedRecords.length} registros guardados - CARGANDO AUTOMÁTICAMENTE`);
           setRecords(savedRecords);
-          setHasExistingRecords(true);
         } else {
           // ❌ NO EXISTEN REGISTROS: El usuario debe agregar costos manualmente
           console.log(`ℹ️ [FRONTEND] NO se encontraron registros guardados - EL USUARIO DEBE AGREGAR COSTOS MANUALMENTE`);
           setRecords([createNewRecord()]);
-          setHasExistingRecords(false);
         }
       } catch (error) {
         console.error('❌ [FRONTEND] Error al verificar registros guardados:', error);
         console.log(`ℹ️ [FRONTEND] Error en verificación - EL USUARIO DEBE AGREGAR COSTOS MANUALMENTE`);
         setRecords([createNewRecord()]);
-        setHasExistingRecords(false);
       } finally {
         setIsLoadingRecords(false);
       }
@@ -218,14 +210,6 @@ export function SimulationSection({ moduleContent, onSimulationComplete }: Simul
 
     loadSavedRecords();
   }, [businessId, moduleId]);
-
-  // Notificar que la simulación está completa cuando se guarden los registros
-  useEffect(() => {
-    if (simulationCompleted && !isLoading && !error) {
-      // Notificar al componente padre que la simulación está completa
-      onSimulationComplete?.();
-    }
-  }, [simulationCompleted, isLoading, error, onSimulationComplete]);
 
   // --- Lógica del Formulario ---
   function createNewRecord(): FinancialRecord {
@@ -241,12 +225,19 @@ export function SimulationSection({ moduleContent, onSimulationComplete }: Simul
 
   const total = records.reduce((sum, record) => sum + (parseFloat(record.amount) || 0), 0);
 
+  // Notificar que la simulación está completa cuando se guarden los registros
+  useEffect(() => {
+    if (simulationCompleted && !isLoading && !error) {
+      // Notificar al componente padre que la simulación está completa
+      onSimulationComplete?.(records, total);
+    }
+  }, [simulationCompleted, isLoading, error, onSimulationComplete, records, total]);
+
   // Función para guardar registros cuando la validación sea correcta
   const saveRecordsOnValidationSuccess = async (recordsToSave: FinancialRecord[]) => {
     if (!businessId || !moduleId) return;
 
     try {
-      setIsSavingRecords(true);
       console.log('💾 [FRONTEND] Guardando registros después de validación exitosa...');
       
       // Filtrar registros que tienen datos
@@ -261,8 +252,6 @@ export function SimulationSection({ moduleContent, onSimulationComplete }: Simul
       }
     } catch (error) {
       console.error('❌ [FRONTEND] Error al guardar registros después de validación:', error);
-    } finally {
-      setIsSavingRecords(false);
     }
   };
 
@@ -368,8 +357,8 @@ export function SimulationSection({ moduleContent, onSimulationComplete }: Simul
           }
         }
         
-        // Guardar el resultado completo para el análisis final
-        setFinalAnalysisResult(result as any);
+        // Análisis completado exitosamente
+        console.log('✅ [FRONTEND] Análisis completado exitosamente');
       } else {
         console.log('❌ [FRONTEND] Análisis falló:', result);
         setError((result as any).error || "Error en el análisis");

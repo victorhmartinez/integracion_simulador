@@ -1,5 +1,5 @@
 import React from "react";
-import type { FinalAnalysisResult, ActionPlan, DetailedCostAnalysis } from "../../../domain/entities/FinalAnalysisResult";
+// Import removido - no se usa
 
 interface Props {
   data: any; // Cambiado para manejar la nueva estructura
@@ -37,7 +37,7 @@ export const FinalAnalysisResultDisplay: React.FC<Props> = ({ data }) => {
   });
   
   // Extraer datos de la nueva estructura
-  const validationData = data.validation?.data || {};
+  // const validationData = data.validation?.data || {}; // Variable no utilizada
   const analysisData = data.analysis?.data || {};
   const finalData = data.final?.data || {};
   

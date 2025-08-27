@@ -24,10 +24,11 @@ RUN npm run build
 RUN ls -la dist/
 
 # Instalar solo dependencias de producción para la imagen final
+# Instalar solo dependencias de producción
 RUN npm ci --only=production
 
 # Exponer el puerto
 EXPOSE 3000
 
 # Comando para ejecutar la aplicación
-CMD ["node", "dist/src/main"]
+CMD ["sh", "-c", "echo '🚀 [ENTRYPOINT] Iniciando aplicación...' && npx prisma migrate deploy && npx prisma generate && echo '🌱 Ejecutando seed...' && npm run seed && echo '🚀 [ENTRYPOINT] Iniciando aplicación NestJS...' && exec node dist/src/main"]

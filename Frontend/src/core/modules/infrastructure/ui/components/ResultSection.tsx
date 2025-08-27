@@ -181,7 +181,7 @@ const generateMockAnalysisResult = (records: CostRecord[], businessInfo: Busines
 };
 
 // Componente para la sección de Resultados
-export function ResultsSection({ moduleContent }: ResultsSectionProps) {
+export function ResultsSection({ moduleContent: _moduleContent }: ResultsSectionProps) {
     const { businessId, moduleId } = useParams<{ businessId: string; moduleId: string }>();
     const navigate = useNavigate();
     const { businessInfo, isLoading: isLoadingBusiness } = useBusinessInfo(businessId);

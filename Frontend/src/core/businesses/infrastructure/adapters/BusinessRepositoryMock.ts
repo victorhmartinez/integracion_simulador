@@ -96,4 +96,16 @@ export class BusinessRepositoryMock implements IBusinessRepository {
       }, 200);
     });
   }
+
+  async getById(id: number): Promise<Business | null> {
+    console.log("Adaptador de Salida (Mock): Obteniendo negocio por ID:", id);
+    const business = mockBusinesses.find(b => b.id === id);
+    return Promise.resolve(business || null);
+  }
+
+  async getByUserId(userId: number): Promise<Business[]> {
+    console.log("Adaptador de Salida (Mock): Obteniendo negocios por usuario ID:", userId);
+    const userBusinesses = mockBusinesses.filter(b => b.userId === userId);
+    return Promise.resolve(userBusinesses);
+  }
 }

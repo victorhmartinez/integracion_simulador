@@ -1,5 +1,6 @@
 import { apiClient } from "../../../../shared/infrastructure/http/api-client";
 import type { Module } from "../../domain/entities/Module";
+import type { ModuleStatus } from "../../domain/entities/ModuleStatus";
 import type { ILearningPathRepository } from "../../domain/repositories/ILearningPathRepository";
 
 // Interfaces para mapear entre frontend y backend
@@ -20,7 +21,7 @@ const mapApiToModule = (apiModulo: ModuloApiResponse): Module => {
     id: apiModulo.idModulo,
     name: apiModulo.nombreModulo,
     order: apiModulo.ordenModulo || 0,
-    status: apiModulo.status,
+    status: apiModulo.status as ModuleStatus,
   };
 };
 
@@ -63,7 +64,7 @@ export class LearningPathRepositoryApi implements ILearningPathRepository {
           id: modulo.idModulo,
           name: modulo.nombreModulo,
           order: modulo.ordenModulo || 0,
-          status: modulo.ordenModulo === 1 ? 'IN_PROGRESS' : 'LOCKED' as const,
+          status: (modulo.ordenModulo === 1 ? 'IN_PROGRESS' : 'LOCKED') as ModuleStatus,
         }));
         
         console.log(`✅ [FRONTEND] Módulos mapeados básicos:`, mappedModules);

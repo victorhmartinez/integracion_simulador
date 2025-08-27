@@ -24,7 +24,7 @@ export class ModuleRepositoryMock implements IModuleRepository {
     });
   }
 
-  async getAllFinancialRecords(businessId: number, moduleId: number): Promise<FinancialRecord[]> {
+  async getAllFinancialRecords(_businessId: number, _moduleId: number): Promise<FinancialRecord[]> {
     throw new Error("Method not implemented");
   }
 }
